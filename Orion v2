@@ -1,3 +1,6 @@
+-- Orion v2 Embedded | Single LocalScript
+-- Put this entire file in StarterPlayer > StarterPlayerScripts as a LocalScript.
+-- Library source is embedded below; no separate ModuleScript or require is needed.
 
 -- ============================================================
 --  Icon table (from Icons.txt): name -> rbxassetid
@@ -1080,10 +1083,7 @@ function AlfaLib:MakeWindow(WindowConfig)
 		ResetOnSpawn = false,
 		IgnoreGuiInset = true,
 	})
-	local Players = game:GetService("Players")
-	local localPlayer = Players.LocalPlayer
-	local guiParent = (gethui and gethui()) or (localPlayer and localPlayer:WaitForChild("PlayerGui")) or game:GetService("CoreGui")
-	gui.Parent = guiParent
+	gui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 	AlfaLib.Gui = gui
 
 	local notifyGui = Create("ScreenGui", {Name = "AlfaNotify", ResetOnSpawn = false})
@@ -1107,7 +1107,7 @@ function AlfaLib:MakeWindow(WindowConfig)
 		Position = UDim2.new(0.5, -270, 0.5, -175),
 		BackgroundColor3 = AlfaLib.Theme.Main,
 		ClipsDescendants = true,
-		Visible = true,
+		Visible = false,
 		BorderSizePixel = 0,
 		Parent = gui,
 	})
@@ -1261,16 +1261,16 @@ function AlfaLib:MakeWindow(WindowConfig)
 		main.Visible = not main.Visible
 	end)
 
-	-- Intro sequence (non-blocking): the window is visible immediately.
-	main.Visible = true
+	-- Intro sequence
 	task.spawn(function()
-		Tween(splash, {Size = UDim2.fromOffset(150, 150)}, 0.25)
-		task.wait(0.35)
-		Tween(splash, {ImageTransparency = 1, Size = UDim2.fromOffset(190, 190)}, 0.25)
-		task.wait(0.3)
-		if splash and splash.Parent then
-			splash:Destroy()
-		end
+		Tween(splash, {Size = UDim2.fromOffset(150, 150)}, 0.6)
+		task.wait(1.4)
+		Tween(splash, {ImageTransparency = 1, Size = UDim2.fromOffset(190, 190)}, 0.5)
+		task.wait(0.5)
+		splash:Destroy()
+		main.Visible = true
+		main.BackgroundTransparency = 1
+		Tween(main, {BackgroundTransparency = 0}, 0.3)
 	end)
 
 	local Window = {
@@ -2023,3 +2023,123 @@ function AlfaLib:MakeWindow(WindowConfig)
 	return Window
 end
 
+AlfaLib.Icons = IconTable
+
+-- ============================================================
+--  YOUR SCRIPT STARTS HERE
+--  Add/remove tabs and controls in this section.
+-- ============================================================
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local speedEnabled = false
+local jumpEnabled = false
+local speedValue = 50
+local jumpValue = 100
+
+local function GetHumanoid()
+    local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    return Character:WaitForChild("Humanoid")
+end
+
+local function ApplyMovement()
+    local Humanoid = GetHumanoid()
+    Humanoid.WalkSpeed = speedEnabled and speedValue or 16
+    Humanoid.UseJumpPower = true
+    Humanoid.JumpPower = jumpEnabled and jumpValue or 50
+end
+
+-- Main window created by the embedded Orion v2 library.
+local Window = AlfaLib:MakeWindow({
+    Name = "ALAWI Speed Jump",
+    Title = "ALAWI | السرعة والقفز",
+    Logo = "4804597923",
+    Intro = "4804597923",
+    Dev = "مطور علاوي",
+    DevImage = "114691611449238",
+    ToggleImage = "114691611449238",
+    Checker = false,
+})
+
+-- Tab 1: Movement
+local Movement = Window:MakeTab({
+    Name = "الحركة",
+    Icon = "activity",
+})
+
+Movement:AddSection({Name = "السرعة"})
+
+local SpeedToggle = Movement:AddToggle({
+    Name = "تشغيل السرعة",
+    Default = false,
+    Flag = "SpeedEnabled",
+    Callback = function(Value)
+        speedEnabled = Value
+        ApplyMovement()
+    end,
+})
+
+local SpeedSlider = Movement:AddSlider({
+    Name = "قوة السرعة",
+    Min = 16,
+    Max = 150,
+    Default = 50,
+    Increment = 1,
+    Flag = "SpeedValue",
+    Callback = function(Value)
+        speedValue = Value
+        if speedEnabled then
+            ApplyMovement()
+        end
+    end,
+})
+
+Movement:AddSection({Name = "القفز"})
+
+local JumpToggle = Movement:AddToggle({
+    Name = "تشغيل القفز",
+    Default = false,
+    Flag = "JumpEnabled",
+    Callback = function(Value)
+        jumpEnabled = Value
+        ApplyMovement()
+    end,
+})
+
+local JumpSlider = Movement:AddSlider({
+    Name = "قوة القفز",
+    Min = 50,
+    Max = 200,
+    Default = 100,
+    Increment = 1,
+    Flag = "JumpValue",
+    Callback = function(Value)
+        jumpValue = Value
+        if jumpEnabled then
+            ApplyMovement()
+        end
+    end,
+})
+
+Movement:AddButton({
+    Name = "إعادة القيم الافتراضية",
+    Callback = function()
+        SpeedToggle:Set(false)
+        JumpToggle:Set(false)
+        SpeedSlider:Set(50)
+        JumpSlider:Set(100)
+        ApplyMovement()
+    end,
+})
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.3)
+    ApplyMovement()
+end)
+
+AlfaLib:MakeNotification({
+    Name = "تم التشغيل",
+    Content = "قائمة السرعة والقفز جاهزة",
+    Time = 3,
+})
