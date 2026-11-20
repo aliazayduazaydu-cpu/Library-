@@ -111,7 +111,7 @@ Tab:AddButton({
 ## الاستخدام
 
 ```lua
-local AMHUN = loadstring(game:HttpGet("RAW_URL_HERE"))()
+local AMHUN = loadstring(game:HttpGet("https://raw.githubusercontent.com/aliazayduazaydu-cpu/Library-/refs/heads/main/Redz%20v6"))()
 
 local Window = AMHUN:MakeWindow({
     Name = "AM HUN",
