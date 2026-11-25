@@ -210,7 +210,7 @@ function UIHybrid:MakeWindow(cfg)
 	self.TabList = sidebar
 	self.Area = area
 
-	-- Minimize / close
+	-- Minimize
 	local minimized = false
 	minBtn.MouseButton1Click:Connect(function()
 		minimized = not minimized
@@ -228,13 +228,12 @@ function UIHybrid:MakeWindow(cfg)
 		end
 	end)
 
+	-- Close
 	closeBtn.MouseButton1Click:Connect(function()
 		toggleConn:Disconnect()
 		gui:Destroy()
 	end)
 
-	return self
-end
 	-- ================= زر فتح / غلق قابل للتحريك =================
 	if cfg.OpenButton ~= false then
 		local btnGui = create("ScreenGui", {
@@ -261,10 +260,8 @@ end
 			openBtn.TextColor3 = gui.Enabled and T.Accent or T.Text
 		end
 
-		-- السحب والضغط
 		local dragging, moved = false, false
 		local dragStart, startPos
-
 		local conns = {}
 
 		table.insert(conns, openBtn.InputBegan:Connect(function(input)
@@ -304,6 +301,9 @@ end
 		end)
 		refreshOpenBtn()
 	end
+
+	return self
+end
 
 -- ================= Tabs =================
 function UIHybrid:SelectTab(idx)
@@ -494,7 +494,6 @@ function Tab:AddSlider(cfg)
 	local T = W.Theme
 	local min, max = cfg.Min or 0, cfg.Max or 100
 	local inc = cfg.Increment or 1
-	local value = min
 
 	local holder = create("Frame", {
 		Size = UDim2.new(1, 0, 0, 42),
@@ -540,7 +539,6 @@ function Tab:AddSlider(cfg)
 	}, bar)
 	corner(fill, UDim.new(1, 0))
 
-	-- Larger invisible hit area so the slider is easy to grab
 	local hit = create("TextButton", {
 		Size = UDim2.new(1, 0, 0, 18),
 		Position = UDim2.new(0, 0, 0, 22),
@@ -553,7 +551,6 @@ function Tab:AddSlider(cfg)
 		v = math.clamp(v, min, max)
 		v = math.floor(v / inc + 0.5) * inc
 		v = tonumber(string.format("%.2f", v))
-		value = v
 		fill.Size = UDim2.new((v - min) / (max - min), 0, 1, 0)
 		valueLbl.Text = tostring(v)
 		if cfg.Flag then
@@ -605,7 +602,6 @@ function Tab:AddDropdown(cfg)
 	local T = W.Theme
 	local options = cfg.Options or {}
 	local ROW, OPT = 30, 24
-	local current
 	local open = false
 
 	local holder = create("Frame", {
@@ -658,7 +654,6 @@ function Tab:AddDropdown(cfg)
 	end
 
 	local function set(v, silent)
-		current = v
 		valueLbl.Text = tostring(v or "")
 		if cfg.Flag then
 			W.Flags[cfg.Flag] = v
