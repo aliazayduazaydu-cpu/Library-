@@ -1,0 +1,735 @@
+local UIHybrid = {}
+UIHybrid.__index = UIHybrid
+
+local Tab = {}
+Tab.__index = Tab
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+
+local WIDTH, HEIGHT, TITLE_H, SIDEBAR_W = 430, 260, 36, 46
+local DEFAULT_ICON = "rbxassetid://14456045412"
+
+local Themes = {
+	Darker = {
+		Bg = Color3.fromRGB(20, 20, 20),
+		Element = Color3.fromRGB(28, 28, 28),
+		Selected = Color3.fromRGB(45, 45, 45),
+		Stroke = Color3.fromRGB(45, 45, 45),
+		Text = Color3.fromRGB(240, 240, 240),
+		Dim = Color3.fromRGB(150, 150, 150),
+		Off = Color3.fromRGB(60, 60, 60),
+		Accent = Color3.fromRGB(0, 255, 120),
+	},
+	Purple = {
+		Bg = Color3.fromRGB(24, 20, 30),
+		Element = Color3.fromRGB(34, 28, 44),
+		Selected = Color3.fromRGB(56, 44, 72),
+		Stroke = Color3.fromRGB(60, 50, 80),
+		Text = Color3.fromRGB(240, 240, 240),
+		Dim = Color3.fromRGB(160, 150, 180),
+		Off = Color3.fromRGB(60, 55, 75),
+		Accent = Color3.fromRGB(150, 0, 255),
+	},
+}
+
+-- ================= Helpers =================
+local function create(class, props, parent)
+	local obj = Instance.new(class)
+	for k, v in pairs(props or {}) do
+		obj[k] = v
+	end
+	if parent then
+		obj.Parent = parent
+	end
+	return obj
+end
+
+local function corner(obj, radius)
+	create("UICorner", { CornerRadius = radius or UDim.new(0, 6) }, obj)
+end
+
+local function stroke(obj, color)
+	create("UIStroke", { Color = color, Thickness = 1 }, obj)
+end
+
+local function fire(cb, ...)
+	if cb then
+		local ok, err = pcall(cb, ...)
+		if not ok then
+			warn("[UIHybrid] callback error: " .. tostring(err))
+		end
+	end
+end
+
+local function makeDraggable(handle, frame)
+	local dragging, dragStart, startPos
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = frame.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+	UIS.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local d = input.Position - dragStart
+			frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+		end
+	end)
+end
+
+-- ================= Window =================
+function UIHybrid:MakeWindow(cfg)
+	cfg = cfg or {}
+	local T = Themes[cfg.Theme or "Darker"] or Themes.Darker
+
+	local self = setmetatable({}, UIHybrid)
+	self.Theme = T
+	self.Tabs = {}
+	self.Flags = {}
+	self.Registry = {}
+	self.ConfigFile = cfg.ConfigFile or "UIHybrid_Config.json"
+
+	local gui = create("ScreenGui", {
+		Name = "UIHybrid",
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	})
+	local okCore = pcall(function()
+		gui.Parent = CoreGui
+	end)
+	if not okCore or not gui.Parent then
+		gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+	end
+	self.Gui = gui
+
+	-- Main box (430 x 260)
+	local box = create("Frame", {
+		Name = "Box",
+		Size = UDim2.fromOffset(WIDTH, HEIGHT),
+		Position = UDim2.new(0.5, -WIDTH / 2, 0.5, -HEIGHT / 2),
+		BackgroundColor3 = T.Bg,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+	}, gui)
+	corner(box, UDim.new(0, 6))
+	stroke(box, T.Stroke)
+
+	-- Title bar
+	local top = create("Frame", {
+		Size = UDim2.new(1, 0, 0, TITLE_H),
+		BackgroundTransparency = 1,
+	}, box)
+	makeDraggable(top, box)
+
+	create("TextLabel", {
+		Size = UDim2.new(1, -90, 1, 0),
+		Position = UDim2.new(0, 12, 0, 0),
+		BackgroundTransparency = 1,
+		RichText = true,
+		Text = string.format('%s  <font color="#8C8C8C">| %s</font>', cfg.Name or "UIHybrid", cfg.SubTitle or "Library"),
+		TextColor3 = T.Text,
+		TextSize = 15,
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, top)
+
+	local function headerBtn(text, offsetX)
+		local b = create("TextButton", {
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, offsetX, 0.5, 0),
+			Size = UDim2.fromOffset(26, 26),
+			BackgroundColor3 = T.Element,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Text = text,
+			TextColor3 = T.Dim,
+			TextSize = 16,
+			Font = Enum.Font.GothamBold,
+		}, top)
+		corner(b, UDim.new(0, 4))
+		return b
+	end
+	local closeBtn = headerBtn("X", -8)
+	local minBtn = headerBtn("-", -40)
+
+	create("Frame", {
+		Size = UDim2.new(1, 0, 0, 1),
+		Position = UDim2.new(0, 0, 0, TITLE_H),
+		BackgroundColor3 = T.Stroke,
+		BorderSizePixel = 0,
+	}, box)
+
+	-- Content
+	local content = create("Frame", {
+		Name = "Content",
+		Size = UDim2.new(1, 0, 1, -(TITLE_H + 1)),
+		Position = UDim2.new(0, 0, 0, TITLE_H + 1),
+		BackgroundTransparency = 1,
+	}, box)
+
+	-- Icon sidebar
+	local sidebar = create("ScrollingFrame", {
+		Size = UDim2.new(0, SIDEBAR_W, 1, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 0,
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	}, content)
+	create("UIListLayout", {
+		Padding = UDim.new(0, 6),
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	}, sidebar)
+	create("UIPadding", { PaddingTop = UDim.new(0, 4) }, sidebar)
+
+	create("Frame", {
+		Size = UDim2.new(0, 1, 1, 0),
+		Position = UDim2.new(0, SIDEBAR_W, 0, 0),
+		BackgroundColor3 = T.Stroke,
+		BorderSizePixel = 0,
+	}, content)
+
+	local area = create("Frame", {
+		Size = UDim2.new(1, -(SIDEBAR_W + 1), 1, 0),
+		Position = UDim2.new(0, SIDEBAR_W + 1, 0, 0),
+		BackgroundTransparency = 1,
+	}, content)
+
+	self.Box = box
+	self.TabList = sidebar
+	self.Area = area
+
+	-- Minimize / close
+	local minimized = false
+	minBtn.MouseButton1Click:Connect(function()
+		minimized = not minimized
+		content.Visible = not minimized
+		minBtn.Text = minimized and "+" or "-"
+		TweenService:Create(box, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = UDim2.fromOffset(WIDTH, minimized and TITLE_H or HEIGHT),
+		}):Play()
+	end)
+
+	-- RightControl toggles the whole UI
+	local toggleConn = UIS.InputBegan:Connect(function(input, gp)
+		if not gp and input.KeyCode == Enum.KeyCode.RightControl and gui.Parent then
+			gui.Enabled = not gui.Enabled
+		end
+	end)
+
+	closeBtn.MouseButton1Click:Connect(function()
+		toggleConn:Disconnect()
+		gui:Destroy()
+	end)
+
+	return self
+end
+
+-- ================= Tabs =================
+function UIHybrid:SelectTab(idx)
+	local T = self.Theme
+	for i, t in ipairs(self.Tabs) do
+		local on = i == idx
+		t.Page.Visible = on
+		t.Button.BackgroundColor3 = on and T.Selected or T.Element
+		t.Button.ImageColor3 = on and T.Text or T.Dim
+	end
+end
+
+function UIHybrid:MakeTab(cfg)
+	cfg = cfg or {}
+	local T = self.Theme
+
+	local icon = cfg.Icon or DEFAULT_ICON
+	if type(icon) == "number" then
+		icon = "rbxassetid://" .. icon
+	elseif type(icon) == "string" and not icon:find("rbxassetid://") and not icon:find("rbxthumb://") then
+		icon = "rbxassetid://" .. icon
+	end
+
+	local idx = #self.Tabs + 1
+
+	local btn = create("ImageButton", {
+		Size = UDim2.fromOffset(34, 34),
+		BackgroundColor3 = T.Element,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Image = icon,
+		ImageColor3 = T.Dim,
+		LayoutOrder = idx,
+	}, self.TabList)
+	corner(btn, UDim.new(0, 6))
+
+	local page = create("ScrollingFrame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 3,
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		Visible = false,
+	}, self.Area)
+	create("UIListLayout", {
+		Padding = UDim.new(0, 6),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	}, page)
+	create("UIPadding", {
+		PaddingTop = UDim.new(0, 10),
+		PaddingLeft = UDim.new(0, 10),
+		PaddingRight = UDim.new(0, 10),
+		PaddingBottom = UDim.new(0, 10),
+	}, page)
+
+	local tab = setmetatable({ Window = self, Page = page, Button = btn }, Tab)
+	table.insert(self.Tabs, tab)
+
+	btn.MouseButton1Click:Connect(function()
+		self:SelectTab(idx)
+	end)
+	if idx == 1 then
+		self:SelectTab(1)
+	end
+	return tab
+end
+
+-- ================= Elements =================
+function Tab:AddSection(text)
+	local T = self.Window.Theme
+	create("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 20),
+		BackgroundTransparency = 1,
+		Text = "  " .. tostring(text),
+		TextColor3 = T.Dim,
+		TextSize = 12,
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, self.Page)
+end
+
+function Tab:AddLabel(text)
+	local T = self.Window.Theme
+	local lbl = create("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 24),
+		BackgroundTransparency = 1,
+		Text = "  " .. tostring(text),
+		TextColor3 = T.Dim,
+		TextSize = 12,
+		Font = Enum.Font.Gotham,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, self.Page)
+	return {
+		Set = function(_, v)
+			lbl.Text = "  " .. tostring(v)
+		end,
+	}
+end
+
+function Tab:AddButton(cfg)
+	cfg = cfg or {}
+	local T = self.Window.Theme
+	local btn = create("TextButton", {
+		Size = UDim2.new(1, 0, 0, 30),
+		BackgroundColor3 = T.Element,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Text = "  " .. (cfg.Name or "Button"),
+		TextColor3 = T.Text,
+		TextSize = 13,
+		Font = Enum.Font.GothamMedium,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, self.Page)
+	corner(btn)
+
+	btn.MouseButton1Click:Connect(function()
+		fire(cfg.Callback)
+	end)
+
+	return {
+		Set = function(_, v)
+			btn.Text = "  " .. tostring(v)
+		end,
+	}
+end
+
+function Tab:AddToggle(cfg)
+	cfg = cfg or {}
+	local W = self.Window
+	local T = W.Theme
+	local state = cfg.Default == true
+
+	local btn = create("TextButton", {
+		Size = UDim2.new(1, 0, 0, 30),
+		BackgroundColor3 = T.Element,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Text = "  " .. (cfg.Name or "Toggle"),
+		TextColor3 = T.Text,
+		TextSize = 13,
+		Font = Enum.Font.GothamMedium,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, self.Page)
+	corner(btn)
+
+	local dot = create("Frame", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -10, 0.5, 0),
+		Size = UDim2.fromOffset(12, 12),
+		BackgroundColor3 = T.Off,
+		BorderSizePixel = 0,
+	}, btn)
+	corner(dot, UDim.new(1, 0))
+
+	local function set(v, silent)
+		state = v == true
+		TweenService:Create(dot, TweenInfo.new(0.15), {
+			BackgroundColor3 = state and T.Accent or T.Off,
+		}):Play()
+		if cfg.Flag then
+			W.Flags[cfg.Flag] = state
+		end
+		if not silent then
+			fire(cfg.Callback, state)
+		end
+	end
+
+	btn.MouseButton1Click:Connect(function()
+		set(not state)
+	end)
+
+	if cfg.Flag then
+		W.Registry[cfg.Flag] = set
+	end
+	set(state, true)
+
+	return {
+		Set = function(_, v, silent)
+			set(v, silent)
+		end,
+	}
+end
+
+function Tab:AddSlider(cfg)
+	cfg = cfg or {}
+	local W = self.Window
+	local T = W.Theme
+	local min, max = cfg.Min or 0, cfg.Max or 100
+	local inc = cfg.Increment or 1
+	local value = min
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, 42),
+		BackgroundColor3 = T.Element,
+		BorderSizePixel = 0,
+	}, self.Page)
+	corner(holder)
+
+	create("TextLabel", {
+		Size = UDim2.new(1, -70, 0, 20),
+		Position = UDim2.new(0, 10, 0, 4),
+		BackgroundTransparency = 1,
+		Text = cfg.Name or "Slider",
+		TextColor3 = T.Text,
+		TextSize = 13,
+		Font = Enum.Font.GothamMedium,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, holder)
+
+	local valueLbl = create("TextLabel", {
+		Size = UDim2.new(0, 60, 0, 20),
+		Position = UDim2.new(1, -70, 0, 4),
+		BackgroundTransparency = 1,
+		TextColor3 = T.Dim,
+		TextSize = 12,
+		Font = Enum.Font.Gotham,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Text = "",
+	}, holder)
+
+	local bar = create("Frame", {
+		Size = UDim2.new(1, -20, 0, 6),
+		Position = UDim2.new(0, 10, 0, 28),
+		BackgroundColor3 = T.Off,
+		BorderSizePixel = 0,
+	}, holder)
+	corner(bar, UDim.new(1, 0))
+
+	local fill = create("Frame", {
+		Size = UDim2.new(0, 0, 1, 0),
+		BackgroundColor3 = T.Accent,
+		BorderSizePixel = 0,
+	}, bar)
+	corner(fill, UDim.new(1, 0))
+
+	-- Larger invisible hit area so the slider is easy to grab
+	local hit = create("TextButton", {
+		Size = UDim2.new(1, 0, 0, 18),
+		Position = UDim2.new(0, 0, 0, 22),
+		BackgroundTransparency = 1,
+		Text = "",
+		AutoButtonColor = false,
+	}, holder)
+
+	local function set(v, silent)
+		v = math.clamp(v, min, max)
+		v = math.floor(v / inc + 0.5) * inc
+		v = tonumber(string.format("%.2f", v))
+		value = v
+		fill.Size = UDim2.new((v - min) / (max - min), 0, 1, 0)
+		valueLbl.Text = tostring(v)
+		if cfg.Flag then
+			W.Flags[cfg.Flag] = v
+		end
+		if not silent then
+			fire(cfg.Callback, v)
+		end
+	end
+
+	local dragging = false
+	local function fromInput(input)
+		local rel = math.clamp((input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+		set(min + (max - min) * rel)
+	end
+
+	hit.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			fromInput(input)
+		end
+	end)
+	UIS.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+	UIS.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			fromInput(input)
+		end
+	end)
+
+	if cfg.Flag then
+		W.Registry[cfg.Flag] = set
+	end
+	set(cfg.Default or min, true)
+
+	return {
+		Set = function(_, v, silent)
+			set(v, silent)
+		end,
+	}
+end
+
+function Tab:AddDropdown(cfg)
+	cfg = cfg or {}
+	local W = self.Window
+	local T = W.Theme
+	local options = cfg.Options or {}
+	local ROW, OPT = 30, 24
+	local current
+	local open = false
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, ROW),
+		BackgroundColor3 = T.Element,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+	}, self.Page)
+	corner(holder)
+
+	local head = create("TextButton", {
+		Size = UDim2.new(1, 0, 0, ROW),
+		BackgroundTransparency = 1,
+		Text = "",
+		AutoButtonColor = false,
+	}, holder)
+
+	create("TextLabel", {
+		Size = UDim2.new(0.5, 0, 1, 0),
+		Position = UDim2.new(0, 10, 0, 0),
+		BackgroundTransparency = 1,
+		Text = cfg.Name or "Dropdown",
+		TextColor3 = T.Text,
+		TextSize = 13,
+		Font = Enum.Font.GothamMedium,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, head)
+
+	local valueLbl = create("TextLabel", {
+		Size = UDim2.new(0.5, -28, 1, 0),
+		Position = UDim2.new(0.5, 0, 0, 0),
+		BackgroundTransparency = 1,
+		Text = "",
+		TextColor3 = T.Dim,
+		TextSize = 12,
+		Font = Enum.Font.Gotham,
+		TextXAlignment = Enum.TextXAlignment.Right,
+	}, head)
+
+	local list = create("Frame", {
+		Position = UDim2.new(0, 0, 0, ROW),
+		Size = UDim2.new(1, 0, 0, #options * (OPT + 2)),
+		BackgroundTransparency = 1,
+	}, holder)
+	create("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }, list)
+
+	local function setOpen(v)
+		open = v
+		holder.Size = UDim2.new(1, 0, 0, open and (ROW + #options * (OPT + 2)) or ROW)
+	end
+
+	local function set(v, silent)
+		current = v
+		valueLbl.Text = tostring(v or "")
+		if cfg.Flag then
+			W.Flags[cfg.Flag] = v
+		end
+		if not silent then
+			fire(cfg.Callback, v)
+		end
+	end
+
+	for _, opt in ipairs(options) do
+		local ob = create("TextButton", {
+			Size = UDim2.new(1, 0, 0, OPT),
+			BackgroundColor3 = T.Bg,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Text = "  " .. tostring(opt),
+			TextColor3 = T.Dim,
+			TextSize = 12,
+			Font = Enum.Font.Gotham,
+			TextXAlignment = Enum.TextXAlignment.Left,
+		}, list)
+		corner(ob, UDim.new(0, 4))
+		ob.MouseButton1Click:Connect(function()
+			set(opt)
+			setOpen(false)
+		end)
+	end
+
+	head.MouseButton1Click:Connect(function()
+		setOpen(not open)
+	end)
+
+	if cfg.Flag then
+		W.Registry[cfg.Flag] = set
+	end
+	set(cfg.Default or options[1], true)
+
+	return {
+		Set = function(_, v, silent)
+			set(v, silent)
+		end,
+	}
+end
+
+function Tab:AddTextBox(cfg)
+	cfg = cfg or {}
+	local W = self.Window
+	local T = W.Theme
+
+	local holder = create("Frame", {
+		Size = UDim2.new(1, 0, 0, 30),
+		BackgroundColor3 = T.Element,
+		BorderSizePixel = 0,
+	}, self.Page)
+	corner(holder)
+
+	create("TextLabel", {
+		Size = UDim2.new(0.5, 0, 1, 0),
+		Position = UDim2.new(0, 10, 0, 0),
+		BackgroundTransparency = 1,
+		Text = cfg.Name or "TextBox",
+		TextColor3 = T.Text,
+		TextSize = 13,
+		Font = Enum.Font.GothamMedium,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, holder)
+
+	local input = create("TextBox", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -10, 0.5, 0),
+		Size = UDim2.new(0.45, 0, 0, 22),
+		BackgroundColor3 = T.Bg,
+		BorderSizePixel = 0,
+		Text = "",
+		PlaceholderText = cfg.Placeholder or "",
+		PlaceholderColor3 = T.Dim,
+		TextColor3 = T.Text,
+		TextSize = 12,
+		Font = Enum.Font.Gotham,
+		ClearTextOnFocus = false,
+	}, holder)
+	corner(input, UDim.new(0, 4))
+
+	local function set(v, silent)
+		input.Text = tostring(v or "")
+		if cfg.Flag then
+			W.Flags[cfg.Flag] = input.Text
+		end
+		if not silent then
+			fire(cfg.Callback, input.Text)
+		end
+	end
+
+	input.FocusLost:Connect(function()
+		set(input.Text)
+	end)
+
+	if cfg.Flag then
+		W.Registry[cfg.Flag] = set
+	end
+	set(cfg.Default or "", true)
+
+	return {
+		Set = function(_, v, silent)
+			set(v, silent)
+		end,
+	}
+end
+
+-- ================= Config =================
+function UIHybrid:SaveConfig()
+	if not writefile then
+		warn("[UIHybrid] writefile غير متوفرة في هذا الـ executor")
+		return false
+	end
+	local ok = pcall(writefile, self.ConfigFile, HttpService:JSONEncode(self.Flags))
+	return ok
+end
+
+function UIHybrid:LoadConfig()
+	if not (readfile and isfile) then
+		return false
+	end
+	local exists = pcall(isfile, self.ConfigFile) and isfile(self.ConfigFile)
+	if not exists then
+		return false
+	end
+	local ok, data = pcall(function()
+		return HttpService:JSONDecode(readfile(self.ConfigFile))
+	end)
+	if not ok or type(data) ~= "table" then
+		return false
+	end
+	for flag, val in pairs(data) do
+		local apply = self.Registry[flag]
+		if apply then
+			apply(val, true)
+		end
+	end
+	return true
+end
+
+return UIHybrid
