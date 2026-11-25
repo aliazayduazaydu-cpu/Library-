@@ -235,6 +235,75 @@ function UIHybrid:MakeWindow(cfg)
 
 	return self
 end
+	-- ================= زر فتح / غلق قابل للتحريك =================
+	if cfg.OpenButton ~= false then
+		local btnGui = create("ScreenGui", {
+			Name = "UIHybrid_OpenButton",
+			ResetOnSpawn = false,
+		}, gui.Parent)
+
+		local openBtn = create("TextButton", {
+			Name = "OpenCloseButton",
+			Size = UDim2.fromOffset(40, 40),
+			Position = UDim2.new(0, 20, 0.5, -20),
+			BackgroundColor3 = T.Element,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Text = "UI",
+			TextColor3 = T.Text,
+			TextSize = 13,
+			Font = Enum.Font.GothamBold,
+		}, btnGui)
+		corner(openBtn, UDim.new(0, 8))
+		stroke(openBtn, T.Stroke)
+
+		local function refreshOpenBtn()
+			openBtn.TextColor3 = gui.Enabled and T.Accent or T.Text
+		end
+
+		-- السحب والضغط
+		local dragging, moved = false, false
+		local dragStart, startPos
+
+		local conns = {}
+
+		table.insert(conns, openBtn.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = true
+				moved = false
+				dragStart = input.Position
+				startPos = openBtn.Position
+			end
+		end))
+
+		table.insert(conns, UIS.InputChanged:Connect(function(input)
+			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+				local d = input.Position - dragStart
+				if d.Magnitude > 4 then
+					moved = true
+				end
+				openBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+			end
+		end))
+
+		table.insert(conns, UIS.InputEnded:Connect(function(input)
+			if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+				dragging = false
+				if not moved then
+					gui.Enabled = not gui.Enabled
+				end
+			end
+		end))
+
+		gui:GetPropertyChangedSignal("Enabled"):Connect(refreshOpenBtn)
+		gui.Destroying:Connect(function()
+			for _, c in ipairs(conns) do
+				c:Disconnect()
+			end
+			btnGui:Destroy()
+		end)
+		refreshOpenBtn()
+	end
 
 -- ================= Tabs =================
 function UIHybrid:SelectTab(idx)
